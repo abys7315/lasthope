@@ -148,13 +148,57 @@ SemLiFi is a high-reliability optical communication link between two ESP32 micro
 
 You can send custom messages through the optical link at any time:
 
-1. **Option A: Arduino Serial Monitor**
+1. **Option A: Python Duplex Harness**
+   - Run:
+     ```bash
+     python test_lifi.py "YOUR_CUSTOM_MESSAGE"
+     ```
+   - Automatically detects roles and measures roundtrip transmission time and CRC.
+
+2. **Option B: Arduino Serial Monitor**
    - Open Serial Monitor on `COM12` at `115200 baud`.
    - Type any text and press Enter.
-   - The sender will immediately modulate the LED and transmit your message over light.
 
-2. **Option B: PowerShell CLI Automation**
-   - Execute the test script:
-     ```powershell
-     powershell -ExecutionPolicy Bypass -File .\.gemini\antigravity-ide\brain\69922ca6-09ff-4c5a-b6aa-47ace8426948\scratch\send_india_is_best.ps1
+---
+
+## 5. Phase 2: Occlusion Rig & Burst-Loss Characterization
+
+Phase 2 characterizes real burst-loss dynamics to prepare training and evaluation datasets for Phase 3 (BASR model design & masking).
+
+### Data Logging Schema (`data/burst_events.jsonl` & `data/burst_events.csv`)
+Each burst event records:
+- `event_id`: Monotonic event counter.
+- `frame_id`: Sequence ID of the active transmission.
+- `timestamp_start`: Epoch ms when optical obstruction began.
+- `timestamp_end`: Epoch ms when optical signal was restored.
+- `duration_ms`: Physical burst duration ($ms$).
+- `affected_byte_range`: `[start_idx, end_idx]` byte slice corrupted within the payload (or `full_frame`).
+- `affected_byte_count`: Number of corrupted bytes.
+- `pattern_type`: `"short_frequent"` (15–40 ms), `"long_rare"` (150–380 ms), `"mixed_random"`.
+- `tx_payload`: Ground truth payload transmitted by Sender.
+- `rx_payload`: Reconstructed string with corrupted positions masked.
+- `crc_match`: `true` / `false`.
+- `status`: `"CLEAN"`, `"BURST_CORRUPTED"`, or `"BURST_LOST_SYNC"`.
+
+### Tools & Scripts
+1. **`burst_logger.py`**:
+   - Master data collection harness connecting to Sender (`COM12`) and Receiver (`COM11`).
+   - Run live campaign:
+     ```bash
+     python burst_logger.py mixed_random 50
      ```
+   - Run dry-run simulation:
+     ```bash
+     python burst_logger.py --simulate 75
+     ```
+2. **`plot_burst_distribution.py` (Phase 2 Hard Checkpoint Gate)**:
+   - Evaluates burst clustering vs flat/uniform noise.
+   - Generates 4-panel diagnostic plot: `data/burst_distribution_checkpoint.png`.
+   - Run gate evaluation:
+     ```bash
+     python plot_burst_distribution.py
+     ```
+3. **`servo_rig/servo_rig.ino`**:
+   - Hardware controller sketch for SG90/MG995 servo driving an optical flap across the beam.
+   - Supports 3 pre-programmed patterns: `P1` (Short & Frequent), `P2` (Long & Rare), `P3` (Mixed & Random).
+

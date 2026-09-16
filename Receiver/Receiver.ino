@@ -28,14 +28,14 @@ inline int readSensor() {
   return (analogRead(SENSOR_PIN) >= lightThreshold) ? HIGH : LOW;
 }
 
-// ---- CRC8 (polynomial 0x07) ----
+// ---- Dallas/Maxim CRC-8 (polynomial 0x31, x^8 + x^5 + x^4 + 1) ----
 uint8_t crc8(const uint8_t* data, uint16_t len) {
   uint8_t crc = 0x00;
   for (uint16_t i = 0; i < len; i++) {
     crc ^= data[i];
     for (uint8_t bit = 0; bit < 8; bit++) {
       if (crc & 0x80)
-        crc = (crc << 1) ^ 0x07;
+        crc = (crc << 1) ^ 0x31;
       else
         crc = crc << 1;
     }
@@ -85,7 +85,7 @@ int readByte(unsigned long timeoutMs) {
   return (int)val;
 }
 
-// ---- Receive full packet with jitter resilience ----
+// ---- Receive full packet with jitter resilience & burst tracking ----
 void receivePacket() {
   unsigned long rxStart = millis();
 
@@ -133,26 +133,72 @@ void receivePacket() {
     return;
   }
 
-  // Step 4: Read Payload Data Bytes into buffer
+  // Step 4: Read Payload Data Bytes with burst corruption tracking
   char msg[MAX_MSG_LEN + 1];
+  int firstCorrupt = -1;
+  int lastCorrupt = -1;
+  int corruptCount = 0;
+  unsigned long burstStart = 0;
+  unsigned long burstEnd = 0;
+
   for (int i = 0; i < len; i++) {
-    int b = readByte(100);
+    int b = readByte(60);
     if (b < 0) {
-      rxErrCount++;
-      return;
+      if (firstCorrupt == -1) {
+        firstCorrupt = i;
+        burstStart = millis();
+      }
+      lastCorrupt = i;
+      corruptCount++;
+      msg[i] = '?';
+    } else {
+      if (firstCorrupt != -1 && burstEnd == 0) {
+        burstEnd = millis();
+      }
+      msg[i] = (char)b;
     }
-    msg[i] = (char)b;
   }
   msg[len] = '\0';
 
   // Step 5: Read CRC Checksum
   int crcRecv = readByte(100);
+
+  unsigned long rxEnd = millis();
+
+  // If burst loss occurred during payload
+  if (corruptCount > 0) {
+    rxFailCount++;
+    unsigned long burstDur = (burstEnd > burstStart) ? (burstEnd - burstStart) : (corruptCount * 10);
+    Serial.println("\n====================================");
+    Serial.print("[BURST_EVENT] duration_ms=");
+    Serial.print(burstDur);
+    Serial.print(" affected=[");
+    Serial.print(firstCorrupt);
+    Serial.print(",");
+    Serial.print(lastCorrupt);
+    Serial.print("] raw=\"");
+    Serial.print(msg);
+    Serial.println("\"");
+    Serial.print("[LOG] RX BURST CORRUPTION! | Duration: ");
+    Serial.print(burstDur);
+    Serial.print("ms | Corrupted: ");
+    Serial.print(corruptCount);
+    Serial.println(" bytes");
+    Serial.print("[LOG] Totals -> Good: ");
+    Serial.print(rxGoodCount);
+    Serial.print(" | Failed: ");
+    Serial.print(rxFailCount);
+    Serial.print(" | Errors: ");
+    Serial.println(rxErrCount);
+    Serial.println("====================================");
+    return;
+  }
+
   if (crcRecv < 0) {
     rxErrCount++;
     return;
   }
 
-  unsigned long rxEnd = millis();
   rxGoodCount++;
 
   Serial.println("\n====================================");

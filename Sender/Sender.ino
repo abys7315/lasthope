@@ -18,14 +18,14 @@ unsigned long txCount = 0;    // Total packets sent
 unsigned long lastTxTime = 0;
 int messageCycle = 0;
 
-// ---- CRC8 (polynomial 0x07) ----
+// ---- Dallas/Maxim CRC-8 (polynomial 0x31, x^8 + x^5 + x^4 + 1) ----
 uint8_t crc8(const uint8_t* data, uint16_t len) {
   uint8_t crc = 0x00;
   for (uint16_t i = 0; i < len; i++) {
     crc ^= data[i];
     for (uint8_t bit = 0; bit < 8; bit++) {
       if (crc & 0x80)
-        crc = (crc << 1) ^ 0x07;
+        crc = (crc << 1) ^ 0x31;
       else
         crc = crc << 1;
     }
@@ -117,31 +117,40 @@ void sendPacket(const char* msg, uint8_t msgLen) {
   Serial.print("ms) Sent: \"");
   Serial.print(msg);
   Serial.println("\"");
+  Serial.print("[TX_FRAME] frame_id=");
+  Serial.print(seqNum - 1);
+  Serial.print(" len=");
+  Serial.print(msgLen);
+  Serial.print(" crc=0x");
+  Serial.print(checksum, HEX);
+  Serial.print(" payload=\"");
+  Serial.print(msg);
+  Serial.println("\"");
 }
 
-// ---- Auto-telemetry packets (10–12 chars) ----
+// ---- Structured Auto-telemetry packets (Phase 2 & 3 format) ----
 void sendNextAutonomousMessage() {
   char buffer[MAX_MSG_LEN];
 
   switch (messageCycle % 5) {
     case 0:
-      snprintf(buffer, sizeof(buffer), "TEMP: 25.%dC", (int)(random(1, 9)));
+      snprintf(buffer, sizeof(buffer), "TEMP=24.%d,HUM=%d,MOTOR=ON", (int)random(1, 9), (int)random(50, 65));
       break;
 
     case 1:
-      snprintf(buffer, sizeof(buffer), "HUMID: %d%%", (int)(random(45, 60)));
+      snprintf(buffer, sizeof(buffer), "TEMP=25.%d,HUM=%d,MOTOR=OFF", (int)random(1, 9), (int)random(50, 65));
       break;
 
     case 2:
-      snprintf(buffer, sizeof(buffer), "LiFi: ONLINE");
+      snprintf(buffer, sizeof(buffer), "TEMP=26.%d,HUM=%d,SIGNAL=100", (int)random(1, 9), (int)random(50, 65));
       break;
 
     case 3:
-      snprintf(buffer, sizeof(buffer), "SIGNAL: 100%%");
+      snprintf(buffer, sizeof(buffer), "NODE=01,BATT=%d,STATUS=OK", (int)random(88, 99));
       break;
 
     case 4:
-      snprintf(buffer, sizeof(buffer), "NODE #01 OK");
+      snprintf(buffer, sizeof(buffer), "PRESSURE=101%d,LUX=450,ID=1", (int)random(1, 5));
       break;
   }
 
