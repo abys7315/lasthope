@@ -1,5 +1,5 @@
 """
-SemLiFi Phase 5 — Full System Integration Pipeline
+SemLiFi Phase 5 -- Full System Integration Pipeline
 ===================================================
 End-to-end integration of the complete SemLiFi optical communication system:
 
@@ -13,9 +13,9 @@ End-to-end integration of the complete SemLiFi optical communication system:
          |              |         (74k params, 3ms)
          |              v
          |        CGFP Confidence Engine
-         |        (token prob × burst penalty × syntax)
+         |        (token prob x burst penalty x syntax)
          |              |
-         |       [C >= τ*?]---YES---> PATCH (0ms overhead)
+         |       [C >= tau*?]---YES---> PATCH (0ms overhead)
          |              |
          |             NO
          |              |
@@ -47,12 +47,12 @@ from basr.dataset import CHAR2IDX, IDX2CHAR, MASK_IDX, PAD_IDX, MAX_SEQ_LEN
 
 DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
 
-# ── Physical channel constants (Phase 1 measured) ──────────────────────
+# -- Physical channel constants (Phase 1 measured) ----------------------
 CLEAN_TRANSIT_MS = 449.0
 NACK_OVERHEAD_MS = 20.0
 ARQ_PENALTY_MS = CLEAN_TRANSIT_MS + NACK_OVERHEAD_MS
 
-# ── Burst injection parameters (Phase 2 empirical) ────────────────────
+# -- Burst injection parameters (Phase 2 empirical) --------------------
 BURST_PROB_PER_FRAME = 0.40  # 40% of frames experience occlusion
 MIN_BURST_CHARS = 3
 MAX_BURST_CHARS = 20
@@ -69,7 +69,7 @@ class SemLiFiPipeline:
 
     def __init__(self, threshold=0.80, device="cpu"):
         print("=" * 72)
-        print("       SEMLIFI FULL SYSTEM INTEGRATION — PHASE 5 PIPELINE")
+        print("       SEMLIFI FULL SYSTEM INTEGRATION -- PHASE 5 PIPELINE")
         print("=" * 72)
 
         # Initialize CGFP Patcher (loads BASR checkpoint)
@@ -161,7 +161,7 @@ class SemLiFiPipeline:
             self.stats["state_transitions_total"] += 1
 
         if not is_burst:
-            # Clean frame — direct acceptance
+            # Clean frame -- direct acceptance
             self.stats["clean_frames"] += 1
             self.stats["total_latency_ms"] += CLEAN_TRANSIT_MS
             if state_changed:
@@ -177,7 +177,7 @@ class SemLiFiPipeline:
                 "state_changed": state_changed,
             }
 
-        # Burst-corrupted frame — invoke CGFP pipeline
+        # Burst-corrupted frame -- invoke CGFP pipeline
         self.stats["burst_frames"] += 1
 
         if corrupted_payload is None:
@@ -210,7 +210,7 @@ class SemLiFiPipeline:
                 if f"MOTOR={clean_payload.split('MOTOR=')[1]}" in patched:
                     self.stats["state_transitions_correct"] += 1
         else:
-            # RETRANSMIT — send NACK, accept retransmitted clean frame
+            # RETRANSMIT -- send NACK, accept retransmitted clean frame
             self.stats["retransmit_frames"] += 1
             self.stats["total_latency_ms"] += CLEAN_TRANSIT_MS + ARQ_PENALTY_MS
             self.backchannel.send_nack(frame_id, confidence)
@@ -333,15 +333,20 @@ class SemLiFiPipeline:
             if prev_payload is None:
                 prev_payload = clean
 
+            # Drain and reset buffers before transmitting next optical packet
+            time.sleep(0.6)
+            rx.reset_input_buffer()
+            tx.reset_input_buffer()
+
             # Transmit over optical link
+            t_send = time.time()
             tx.write((clean + "\n").encode("utf-8"))
             tx.flush()
 
             # Wait for receiver to decode
-            t_send = time.time()
             rx_buffer = b""
             rx_decoded = None
-            while time.time() - t_send < 4.0:
+            while time.time() - t_send < 3.0:
                 if rx.in_waiting > 0:
                     rx_buffer += rx.read(rx.in_waiting)
                     decoded = rx_buffer.decode("utf-8", errors="ignore")
@@ -352,12 +357,12 @@ class SemLiFiPipeline:
                                 rx_decoded = line.split('"')[1] if '"' in line else line.split(":")[-1].strip()
                                 break
                         break
-                time.sleep(0.02)
+                time.sleep(0.01)
 
             transit_ms = (time.time() - t_send) * 1000.0
 
             if rx_decoded is None:
-                # Frame lost — treat as full burst
+                # Frame lost -- treat as full burst
                 res = self.process_frame(
                     clean_payload=clean,
                     prev_payload=prev_payload,
@@ -377,7 +382,7 @@ class SemLiFiPipeline:
                 )
                 rx_status = "CLEAN"
             else:
-                # Partial corruption — mark differences as masked
+                # Partial corruption -- mark differences as masked
                 corrupted = list(rx_decoded)
                 for j in range(min(len(corrupted), len(clean))):
                     if j < len(corrupted) and corrupted[j] != clean[j]:
@@ -394,7 +399,7 @@ class SemLiFiPipeline:
                 rx_status = "CORRUPT"
 
             results.append(res)
-            conf_str = f"{res['confidence']:.3f}" if res.get('confidence') else "  —  "
+            conf_str = f"{res['confidence']:.3f}" if res.get('confidence') else "  -  "
             print(f"{i+1:>4} {clean:<30} {rx_status:<12} {res['action']:<11} {conf_str:>6} {transit_ms:>8.0f}")
 
             prev_payload = clean
@@ -505,7 +510,7 @@ class SemLiFiPipeline:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="SemLiFi Phase 5 — Full System Integration Pipeline")
+    parser = argparse.ArgumentParser(description="SemLiFi Phase 5 -- Full System Integration Pipeline")
     parser.add_argument("--mode", choices=["simulate", "live"], default="simulate",
                         help="Pipeline mode: 'simulate' for synthetic bursts, 'live' for real hardware")
     parser.add_argument("--frames", type=int, default=500,
