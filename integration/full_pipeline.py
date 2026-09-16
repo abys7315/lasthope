@@ -164,6 +164,8 @@ class SemLiFiPipeline:
             # Clean frame — direct acceptance
             self.stats["clean_frames"] += 1
             self.stats["total_latency_ms"] += CLEAN_TRANSIT_MS
+            if state_changed:
+                self.stats["state_transitions_correct"] += 1
             return {
                 "frame_id": frame_id,
                 "status": "CLEAN",
@@ -428,8 +430,14 @@ class SemLiFiPipeline:
         st_acc = (st_correct / max(1, st_total)) * 100.0
 
         # Latency comparison vs pure ARQ
-        pure_arq_lat = CLEAN_TRANSIT_MS + (burst / max(1, total)) * ARQ_PENALTY_MS
-        latency_savings = ((pure_arq_lat - avg_latency) / pure_arq_lat) * 100.0 if pure_arq_lat > 0 else 0
+        # Baseline A: Fast-NACK ARQ on this exact mixed stream (clean=449ms, burst=449+469=918ms)
+        fast_nack_mixed_lat = CLEAN_TRANSIT_MS + (burst / max(1, total)) * ARQ_PENALTY_MS
+        fast_nack_savings = ((fast_nack_mixed_lat - avg_latency) / fast_nack_mixed_lat) * 100.0 if fast_nack_mixed_lat > 0 else 0.0
+
+        # Baseline B: Standard Stop-and-Wait ARQ (empirical Phase 1 hardware benchmark: 1560.0 ms on bursts)
+        # On mixed stream:
+        saw_arq_mixed_lat = (s["clean_frames"] * CLEAN_TRANSIT_MS + burst * 1560.0) / max(1, total)
+        saw_savings = ((saw_arq_mixed_lat - avg_latency) / saw_arq_mixed_lat) * 100.0 if saw_arq_mixed_lat > 0 else 0.0
 
         print("\n" + "=" * 72)
         print("       SEMLIFI PHASE 5 -- FULL PIPELINE PERFORMANCE REPORT")
@@ -443,7 +451,7 @@ class SemLiFiPipeline:
         print(f"")
         print(f"  +-- CGFP Decision Engine (tau* = {self.threshold:.2f}) ----------------------------+")
         print(f"  |  PATCH (On-Device Fix):      {patched:>6}  ({patched/max(1,burst)*100:>5.1f}% of bursts)     |")
-        print(f"  |    +-- Exact Patches:         {exact:>6}  ({exact/max(1,patched)*100:>5.1f}% patch accuracy) |")
+        print(f"  |    +-- Exact Patches:         {exact:>6}  ({exact/max(1,patched)*100:>5.1f}% patch precision)|")
         print(f"  |    +-- Incorrect Patches:     {incorrect:>6}  (Undetected errors)       |")
         print(f"  |  RETRANSMIT (NACK Sent):     {retransmit:>6}  ({retransmit/max(1,burst)*100:>5.1f}% of bursts)     |")
         print(f"  +--------------------------------------------------------------------+")
@@ -451,15 +459,16 @@ class SemLiFiPipeline:
         print(f"  +-- Key Performance Indicators ---------------------------------------+")
         print(f"  |  Retransmission Reduction:    {retrans_reduction:>5.1f}%                         |")
         print(f"  |  Undetected Frame Error Rate: {ufer:>5.2f}%  (Safety limit: <2.0%)   |")
-        print(f"  |  Mean Delivery Latency:       {avg_latency:>6.1f} ms                      |")
+        print(f"  |  Mean Mixed-Stream Latency:   {avg_latency:>6.1f} ms                      |")
         print(f"  |  Mean BASR Inference Time:    {avg_inference:>6.2f} ms                      |")
         print(f"  |  State Transition Accuracy:   {st_acc:>5.1f}%  ({st_correct}/{st_total})               |")
         print(f"  +--------------------------------------------------------------------+")
         print(f"")
-        print(f"  +-- Protocol Comparison ----------------------------------------------+")
-        print(f"  |  Pure ARQ Baseline Latency:   {1560.0:>6.0f} ms                      |")
-        print(f"  |  SemLiFi CGFP Latency:        {avg_latency:>6.1f} ms                      |")
-        print(f"  |  Latency Savings:             {latency_savings:>5.1f}%                         |")
+        print(f"  +-- Latency Reconciliation & Protocol Comparison --------------------+")
+        print(f"  |  SemLiFi CGFP Mixed Stream:   {avg_latency:>6.1f} ms                      |")
+        print(f"  |  Fast-NACK Mixed Baseline:    {fast_nack_mixed_lat:>6.1f} ms  (Savings: {fast_nack_savings:>5.1f}%)    |")
+        print(f"  |  Stop-and-Wait ARQ Mixed:     {saw_arq_mixed_lat:>6.1f} ms  (Savings: {saw_savings:>5.1f}%)    |")
+        print(f"  |  (Note: 100% burst stream = 780.0ms; mixed {burst/total*100:.0f}% stream = {avg_latency:.1f}ms)   |")
         print(f"  +--------------------------------------------------------------------+")
         print("=" * 72)
 
@@ -475,13 +484,16 @@ class SemLiFiPipeline:
             "retransmit_frames": retransmit,
             "exact_patches": exact,
             "incorrect_patches": incorrect,
+            "patch_precision_pct": round((exact / max(1, patched)) * 100.0, 2),
             "retransmission_reduction_pct": round(retrans_reduction, 2),
             "undetected_error_rate_pct": round(ufer, 2),
             "mean_latency_ms": round(avg_latency, 1),
             "mean_inference_ms": round(avg_inference, 2),
             "state_transition_accuracy_pct": round(st_acc, 1),
-            "pure_arq_latency_ms": 1560.0,
-            "latency_savings_pct": round(latency_savings, 1),
+            "fast_nack_mixed_lat_ms": round(fast_nack_mixed_lat, 1),
+            "fast_nack_savings_pct": round(fast_nack_savings, 2),
+            "saw_arq_mixed_lat_ms": round(saw_arq_mixed_lat, 1),
+            "saw_arq_savings_pct": round(saw_savings, 2),
             "backchannel_stats": self.backchannel.get_stats(),
         }
         report_path = os.path.join(DATA_DIR, "phase5_pipeline_report.json")
@@ -496,10 +508,10 @@ def main():
     parser = argparse.ArgumentParser(description="SemLiFi Phase 5 — Full System Integration Pipeline")
     parser.add_argument("--mode", choices=["simulate", "live"], default="simulate",
                         help="Pipeline mode: 'simulate' for synthetic bursts, 'live' for real hardware")
-    parser.add_argument("--frames", type=int, default=50,
-                        help="Number of telemetry frames to process (default: 50)")
+    parser.add_argument("--frames", type=int, default=500,
+                        help="Number of telemetry frames to process (default: 500)")
     parser.add_argument("--threshold", type=float, default=0.80,
-                        help="CGFP confidence threshold τ* (default: 0.80)")
+                        help="CGFP confidence threshold tau* (default: 0.80)")
     parser.add_argument("--burst-prob", type=float, default=0.40,
                         help="Burst probability per frame in simulation mode (default: 0.40)")
     parser.add_argument("--sender", type=str, default="COM12",
@@ -508,8 +520,17 @@ def main():
                         help="Receiver COM port for live mode (default: COM11)")
     parser.add_argument("--device", type=str, default="cpu",
                         help="Compute device (default: cpu)")
+    parser.add_argument("--seed", type=int, default=42,
+                        help="Random seed for deterministic simulation (default: 42)")
 
     args = parser.parse_args()
+
+    if args.seed is not None and args.mode == "simulate":
+        random.seed(args.seed)
+        import numpy as np
+        np.random.seed(args.seed)
+        import torch
+        torch.manual_seed(args.seed)
 
     pipeline = SemLiFiPipeline(threshold=args.threshold, device=args.device)
 

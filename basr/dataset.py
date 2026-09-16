@@ -164,13 +164,18 @@ class TelemetryBurstDataset(Dataset):
         }
 
 
-def get_dataloaders(batch_size=64):
+def get_dataloaders(batch_size=64, seed=None, return_val_ds=False):
+    if seed is not None:
+        random.seed(seed)
+        np.random.seed(seed)
+        torch.manual_seed(seed)
+
     burst_durations = load_empirical_burst_durations()
     telemetry = generate_telemetry_stream(num_samples=6000)
 
     train_data = telemetry[:4500]
-    val_data = telemetry[4500:5250]
-    test_data = telemetry[5250:]
+    val_data = telemetry[4500:5250]    # Calibration split (750 samples)
+    test_data = telemetry[5250:]      # Strictly held-out test split (750 samples)
 
     train_ds = TelemetryBurstDataset(train_data, burst_durations, mask_prob=0.85)
     val_ds = TelemetryBurstDataset(val_data, burst_durations, mask_prob=0.85)
@@ -181,4 +186,6 @@ def get_dataloaders(batch_size=64):
     val_loader = DataLoader(val_ds, batch_size=batch_size, shuffle=False)
     test_loader = DataLoader(test_ds, batch_size=batch_size, shuffle=False)
 
+    if return_val_ds:
+        return train_loader, val_loader, test_loader, test_ds, val_ds
     return train_loader, val_loader, test_loader, test_ds
