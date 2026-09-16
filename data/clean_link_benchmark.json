@@ -1,0 +1,13 @@
+{
+  "num_frames": 15,
+  "good_frames": 4,
+  "crc_errors": 2,
+  "sync_misses": 9,
+  "frame_success_rate_pct": 26.666666666666668,
+  "sync_success_rate_pct": 40.0,
+  "bit_error_rate": 0.6041666666666666,
+  "avg_duration_ms": 449.0,
+  "min_duration_ms": 443,
+  "max_duration_ms": 455,
+  "timestamp": 1789596527.5052278
+}

@@ -1,0 +1,10 @@
+{
+  "total_frames": 70,
+  "delivered_frames": 68,
+  "dropped_frames": 2,
+  "delivery_rate_pct": 97.14285714285714,
+  "total_transmissions": 144,
+  "overhead_ratio": 2.057142857142857,
+  "avg_latency_ms": 1560.0,
+  "nominal_latency_ms": 450.0
+}

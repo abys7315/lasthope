@@ -189,22 +189,32 @@ void setup() {
   Serial.println("============================================\n");
 }
 
+bool autoTxEnabled = false; // Disabled by default to give test harness full deterministic control
+
 void loop() {
   // 1. Check if user typed a custom message in Serial Monitor
   if (Serial.available() > 0) {
     String manualMsg = Serial.readStringUntil('\n');
     manualMsg.trim();
     if (manualMsg.length() > 0) {
-      Serial.print("\n>>> [USER TX] Transmitting: \"");
-      Serial.print(manualMsg);
-      Serial.println("\" over LiFi...");
+      if (manualMsg == "AUTOTX 1") {
+        autoTxEnabled = true;
+        Serial.println("[OK] Auto-telemetry broadcast ENABLED (every 4s).");
+        lastTxTime = millis();
+        return;
+      } else if (manualMsg == "AUTOTX 0") {
+        autoTxEnabled = false;
+        Serial.println("[OK] Auto-telemetry broadcast DISABLED.");
+        return;
+      }
+
       sendPacket(manualMsg.c_str(), manualMsg.length());
-      lastTxTime = millis(); // Reset timer so it doesn't collide
+      lastTxTime = millis(); // Reset timer
     }
   }
 
-  // 2. Broadcast auto-telemetry every 4 seconds when idle
-  if (millis() - lastTxTime >= 4000) {
+  // 2. Broadcast auto-telemetry only when explicitly enabled
+  if (autoTxEnabled && (millis() - lastTxTime >= 4000)) {
     lastTxTime = millis();
     sendNextAutonomousMessage();
   }
