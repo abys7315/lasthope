@@ -293,7 +293,7 @@ class BurstLogger:
             frame_id = i + 1
             payload = telemetry_samples[i % len(telemetry_samples)]
             self.transmit_and_log(payload, frame_id)
-            time.sleep(0.4)
+            time.sleep(0.7)
 
         print("\n" + "=" * 70)
         print(f" CAMPAIGN COMPLETE: {self.event_counter} Total | "
