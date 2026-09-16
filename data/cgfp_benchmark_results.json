@@ -1,0 +1,191 @@
+{
+  "optimal_threshold": 0.8,
+  "retransmission_reduction_pct": 29.43,
+  "residual_error_rate_pct": 1.35,
+  "effective_latency_ms": 780.0,
+  "pure_arq_latency_ms": 1560.0,
+  "latency_reduction_pct": 50.0,
+  "hard_gate_status": "REVIEW",
+  "pareto_curve": [
+    {
+      "threshold": 0.1,
+      "retrans_reduction_pct": 99.85,
+      "nack_rate_pct": 0.15,
+      "residual_error_rate_pct": 58.26,
+      "avg_latency_ms": 449.7,
+      "patched_count": 665,
+      "retransmit_count": 1,
+      "undetected_errors": 388
+    },
+    {
+      "threshold": 0.15,
+      "retrans_reduction_pct": 99.85,
+      "nack_rate_pct": 0.15,
+      "residual_error_rate_pct": 58.26,
+      "avg_latency_ms": 449.7,
+      "patched_count": 665,
+      "retransmit_count": 1,
+      "undetected_errors": 388
+    },
+    {
+      "threshold": 0.2,
+      "retrans_reduction_pct": 99.85,
+      "nack_rate_pct": 0.15,
+      "residual_error_rate_pct": 58.26,
+      "avg_latency_ms": 449.7,
+      "patched_count": 665,
+      "retransmit_count": 1,
+      "undetected_errors": 388
+    },
+    {
+      "threshold": 0.25,
+      "retrans_reduction_pct": 99.85,
+      "nack_rate_pct": 0.15,
+      "residual_error_rate_pct": 58.26,
+      "avg_latency_ms": 449.7,
+      "patched_count": 665,
+      "retransmit_count": 1,
+      "undetected_errors": 388
+    },
+    {
+      "threshold": 0.3,
+      "retrans_reduction_pct": 99.85,
+      "nack_rate_pct": 0.15,
+      "residual_error_rate_pct": 58.26,
+      "avg_latency_ms": 449.7,
+      "patched_count": 665,
+      "retransmit_count": 1,
+      "undetected_errors": 388
+    },
+    {
+      "threshold": 0.35,
+      "retrans_reduction_pct": 99.85,
+      "nack_rate_pct": 0.15,
+      "residual_error_rate_pct": 58.26,
+      "avg_latency_ms": 449.7,
+      "patched_count": 665,
+      "retransmit_count": 1,
+      "undetected_errors": 388
+    },
+    {
+      "threshold": 0.4,
+      "retrans_reduction_pct": 99.85,
+      "nack_rate_pct": 0.15,
+      "residual_error_rate_pct": 58.26,
+      "avg_latency_ms": 449.7,
+      "patched_count": 665,
+      "retransmit_count": 1,
+      "undetected_errors": 388
+    },
+    {
+      "threshold": 0.45,
+      "retrans_reduction_pct": 99.85,
+      "nack_rate_pct": 0.15,
+      "residual_error_rate_pct": 58.26,
+      "avg_latency_ms": 449.7,
+      "patched_count": 665,
+      "retransmit_count": 1,
+      "undetected_errors": 388
+    },
+    {
+      "threshold": 0.5,
+      "retrans_reduction_pct": 66.52,
+      "nack_rate_pct": 33.48,
+      "residual_error_rate_pct": 29.58,
+      "avg_latency_ms": 606.0,
+      "patched_count": 443,
+      "retransmit_count": 223,
+      "undetected_errors": 197
+    },
+    {
+      "threshold": 0.55,
+      "retrans_reduction_pct": 55.56,
+      "nack_rate_pct": 44.44,
+      "residual_error_rate_pct": 19.22,
+      "avg_latency_ms": 657.4,
+      "patched_count": 370,
+      "retransmit_count": 296,
+      "undetected_errors": 128
+    },
+    {
+      "threshold": 0.6,
+      "retrans_reduction_pct": 53.45,
+      "nack_rate_pct": 46.55,
+      "residual_error_rate_pct": 17.57,
+      "avg_latency_ms": 667.3,
+      "patched_count": 356,
+      "retransmit_count": 310,
+      "undetected_errors": 117
+    },
+    {
+      "threshold": 0.65,
+      "retrans_reduction_pct": 50.3,
+      "nack_rate_pct": 49.7,
+      "residual_error_rate_pct": 14.86,
+      "avg_latency_ms": 682.1,
+      "patched_count": 335,
+      "retransmit_count": 331,
+      "undetected_errors": 99
+    },
+    {
+      "threshold": 0.7,
+      "retrans_reduction_pct": 42.79,
+      "nack_rate_pct": 57.21,
+      "residual_error_rate_pct": 9.01,
+      "avg_latency_ms": 717.3,
+      "patched_count": 285,
+      "retransmit_count": 381,
+      "undetected_errors": 60
+    },
+    {
+      "threshold": 0.75,
+      "retrans_reduction_pct": 34.53,
+      "nack_rate_pct": 65.47,
+      "residual_error_rate_pct": 4.35,
+      "avg_latency_ms": 756.0,
+      "patched_count": 230,
+      "retransmit_count": 436,
+      "undetected_errors": 29
+    },
+    {
+      "threshold": 0.8,
+      "retrans_reduction_pct": 29.43,
+      "nack_rate_pct": 70.57,
+      "residual_error_rate_pct": 1.35,
+      "avg_latency_ms": 780.0,
+      "patched_count": 196,
+      "retransmit_count": 470,
+      "undetected_errors": 9
+    },
+    {
+      "threshold": 0.85,
+      "retrans_reduction_pct": 28.38,
+      "nack_rate_pct": 71.62,
+      "residual_error_rate_pct": 0.9,
+      "avg_latency_ms": 784.9,
+      "patched_count": 189,
+      "retransmit_count": 477,
+      "undetected_errors": 6
+    },
+    {
+      "threshold": 0.9,
+      "retrans_reduction_pct": 26.73,
+      "nack_rate_pct": 73.27,
+      "residual_error_rate_pct": 0.15,
+      "avg_latency_ms": 792.7,
+      "patched_count": 178,
+      "retransmit_count": 488,
+      "undetected_errors": 1
+    },
+    {
+      "threshold": 0.95,
+      "retrans_reduction_pct": 24.17,
+      "nack_rate_pct": 75.83,
+      "residual_error_rate_pct": 0.0,
+      "avg_latency_ms": 804.6,
+      "patched_count": 161,
+      "retransmit_count": 505,
+      "undetected_errors": 0
+    }
+  ]
+}

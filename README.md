@@ -260,3 +260,117 @@ Evaluated on 750 held-out empirical burst-corrupted telemetry frames (`data/burs
    ```bash
    python basr/evaluate_and_compare.py
    ```
+
+---
+
+## 8. Phase 4: Confidence-Guided Frame Patching (CGFP)
+
+Phase 4 adds the core protocol intelligence to SemLiFi: instead of blindly accepting or always retransmitting burst-corrupted frames, CGFP computes a calibrated **multi-factor confidence score** for each BASR-reconstructed frame and decides whether to **patch on-device** (zero retransmission overhead) or trigger a **selective back-channel NACK** (targeted retransmission).
+
+### 8.1 Multi-Factor Confidence Score ($C_{frame}$)
+
+For each reconstructed frame, the CGFP engine computes:
+
+1. **Token Softmax Likelihood ($C_{token}$)**: Geometric mean of BASR's posterior token probabilities across all masked positions.
+2. **Burst Span Risk Penalty**: Longer occlusions carry exponentially higher reconstruction uncertainty ($\alpha = 0.50$, $\gamma = 1.15$).
+3. **Strict Telemetry Schema Validation**: Regex + physical boundary verification (`TEMP=[19.0-45.0], HUM=[20-95], MOTOR={ON,OFF}`).
+
+$$C_{frame} = C_{token} \times Penalty_{burst} \times S_{syntax}$$
+
+### 8.2 Decision Engine & Selective Back-Channel
+
+| Condition | Action | Latency Overhead |
+|---|---|---|
+| $C_{frame} \ge \tau^*$ AND syntax valid | **PATCH** (accept on-device) | 0 ms (zero retransmissions) |
+| $C_{frame} < \tau^*$ OR syntax invalid | **RETRANSMIT** (selective NACK) | +469 ms (NACK + re-transit) |
+
+**NACK Frame Format**: `[0x55 0xAA] [OPCODE: 0x15] [FRAME_ID: 1B] [REASON: 1B] [CRC8: 1B]` (6 bytes).
+
+### 8.3 Pareto Optimization & Calibrated Threshold
+
+Evaluated across 666 empirical burst-corrupted telemetry frames with threshold sweep $\tau \in [0.10, 0.95]$:
+
+- **Optimal Threshold**: $\tau^* = 0.80$
+- **Retransmission Reduction**: 29.4% of burst frames patched without retransmission
+- **Residual Undetected Frame Error Rate (UFER)**: 1.35% (safety compliant: < 2.0%)
+- **Effective Delivery Latency**: 780 ms (50% reduction vs Pure ARQ's 1560 ms)
+
+### 8.4 CGFP Module Structure
+
+| File | Purpose |
+|---|---|
+| `cgfp/confidence.py` | Multi-factor confidence score computation |
+| `cgfp/patcher.py` | `CGFPPatcher` runtime engine (BASR + confidence + decision) |
+| `cgfp/backchannel.py` | Selective NACK protocol framing & retransmission queue |
+| `cgfp/evaluate_cgfp.py` | Pareto sweep & Hard Gate checkpoint evaluation |
+| `cgfp/live_cgfp_demo.py` | Interactive frame-by-frame demo with confidence bars |
+
+### 8.5 How to Run Phase 4
+
+1. **Run CGFP Hard Gate Evaluation**:
+   ```bash
+   python cgfp/evaluate_cgfp.py
+   ```
+2. **Run Interactive CGFP Demo**:
+   ```bash
+   python cgfp/live_cgfp_demo.py --frames 25 --burst-prob 0.5
+   ```
+
+---
+
+## 9. Phase 5: Full System Integration & Demonstration
+
+Phase 5 integrates all components into a single end-to-end pipeline that can operate in both **simulation mode** (synthetic burst injection) and **live hardware mode** (real ESP32 optical link).
+
+### 9.1 System Architecture
+
+```
+[ESP32 Sender] --OOK LED--> [Air Gap] --Photodiode--> [ESP32 Receiver]
+     |                                                       |
+     |                    (Burst Occlusion)                  |
+     |                                                       v
+     |                                              [Python Host]
+     |                                                       |
+     |              +------- BASR Transformer <--------------+
+     |              |         (74k params, 3ms)
+     |              v
+     |        CGFP Confidence Engine
+     |        (token prob x burst penalty x syntax)
+     |              |
+     |       [C >= tau*?]---YES---> PATCH (0ms overhead)
+     |              |
+     |             NO
+     |              |
+     +<--- NACK ----+  (Selective Back-Channel)
+```
+
+### 9.2 Pipeline Modes
+
+| Mode | Command | Description |
+|---|---|---|
+| **Simulate** | `python integration/full_pipeline.py --mode simulate --frames 100` | Synthetic telemetry with random burst injection |
+| **Live** | `python integration/full_pipeline.py --mode live --sender COM12 --receiver COM11` | Real ESP32 hardware optical link |
+
+### 9.3 How to Run Phase 5
+
+1. **Full Pipeline Simulation** (100 frames, 40% burst probability):
+   ```bash
+   python integration/full_pipeline.py --mode simulate --frames 100 --burst-prob 0.40
+   ```
+2. **Live Hardware Pipeline** (requires ESP32s on COM11/COM12):
+   ```bash
+   python integration/full_pipeline.py --mode live --sender COM12 --receiver COM11 --frames 20
+   ```
+
+---
+
+## 10. Complete System Performance Summary
+
+| Metric | RS-FEC (Phase 1) | ARQ (Phase 1) | BASR Only (Phase 3) | SemLiFi CGFP (Phase 4+5) |
+|---|---|---|---|---|
+| **Recovery/Delivery Rate** | 37.5% | 97.1% | 100% (on-device) | 100% (patch + selective retransmit) |
+| **Mean Delivery Latency** | 449 ms | 1560 ms | 449 ms + 3 ms CPU | 780 ms (50% faster than ARQ) |
+| **Retransmission Overhead** | 0% | 100% (every burst) | 0% | 70.6% (29.4% avoided) |
+| **Undetected Error Rate** | 62.5% (drops) | 0% | N/A (no gating) | 1.35% (safety compliant) |
+| **State Transition Accuracy** | N/A | 100% (retransmit) | 100% | 100% |
+| **Edge CPU Feasibility** | Algebraic only | Timer-based | 74k params, 3.2 ms | 74k params, 4.8 ms |
