@@ -346,15 +346,22 @@ class SemLiFiPipeline:
             # Wait for receiver to decode
             rx_buffer = b""
             rx_decoded = None
-            while time.time() - t_send < 3.0:
+            is_hardware_burst = False
+            while time.time() - t_send < 1.5:
                 if rx.in_waiting > 0:
                     rx_buffer += rx.read(rx.in_waiting)
                     decoded = rx_buffer.decode("utf-8", errors="ignore")
                     if "Received Message:" in decoded:
-                        # Extract the received message
                         for line in decoded.split("\n"):
                             if "Received Message:" in line:
                                 rx_decoded = line.split('"')[1] if '"' in line else line.split(":")[-1].strip()
+                                break
+                        break
+                    elif "[BURST_EVENT]" in decoded and 'raw="' in decoded:
+                        for line in decoded.split("\n"):
+                            if 'raw="' in line:
+                                rx_decoded = line.split('raw="')[1].split('"')[0]
+                                is_hardware_burst = True
                                 break
                         break
                 time.sleep(0.01)
@@ -372,7 +379,7 @@ class SemLiFiPipeline:
                     state_changed=state_changed,
                 )
                 rx_status = "LOST"
-            elif rx_decoded == clean:
+            elif rx_decoded == clean and not is_hardware_burst:
                 # Clean frame received
                 res = self.process_frame(
                     clean_payload=clean,
@@ -382,18 +389,31 @@ class SemLiFiPipeline:
                 )
                 rx_status = "CLEAN"
             else:
-                # Partial corruption -- mark differences as masked
+                # Burst occlusion detected on hardware
                 corrupted = list(rx_decoded)
-                for j in range(min(len(corrupted), len(clean))):
+                # Ensure length matches
+                if len(corrupted) < len(clean):
+                    corrupted = corrupted + ["?"] * (len(clean) - len(corrupted))
+                elif len(corrupted) > len(clean):
+                    corrupted = corrupted[:len(clean)]
+                
+                # Mark corrupted characters
+                for j in range(len(clean)):
                     if j < len(corrupted) and corrupted[j] != clean[j]:
                         corrupted[j] = "?"
                 corrupted_str = "".join(corrupted)
+                
+                # Find burst range
+                mask_indices = [i for i, c in enumerate(corrupted_str) if c == "?"]
+                b_start = min(mask_indices) if mask_indices else 0
+                b_end = max(mask_indices) + 1 if mask_indices else len(clean)
+
                 res = self.process_frame(
                     clean_payload=clean,
                     prev_payload=prev_payload,
                     is_burst=True,
                     corrupted_payload=corrupted_str,
-                    burst_range=(0, len(clean)),
+                    burst_range=(b_start, b_end),
                     state_changed=state_changed,
                 )
                 rx_status = "CORRUPT"
