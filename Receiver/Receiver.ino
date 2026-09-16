@@ -126,14 +126,21 @@ void receivePacket() {
     return;
   }
 
-  // Step 3: Read Length
+  // Step 3: Read Sequence Number (protocol matches Sender.ino)
+  int seq = readByte(100);
+  if (seq < 0) {
+    rxErrCount++;
+    return;
+  }
+
+  // Step 4: Read Length
   int len = readByte(100);
   if (len <= 0 || len > MAX_MSG_LEN) {
     rxErrCount++;
     return;
   }
 
-  // Step 4: Read Payload Data Bytes with burst corruption tracking
+  // Step 5: Read Payload Data Bytes with burst corruption tracking
   char msg[MAX_MSG_LEN + 1];
   int firstCorrupt = -1;
   int lastCorrupt = -1;
@@ -160,7 +167,7 @@ void receivePacket() {
   }
   msg[len] = '\0';
 
-  // Step 5: Read CRC Checksum
+  // Step 6: Read CRC Checksum
   int crcRecv = readByte(100);
 
   unsigned long rxEnd = millis();
@@ -207,7 +214,9 @@ void receivePacket() {
   Serial.print("ms | Duration: ");
   Serial.print(rxEnd - rxStart);
   Serial.println("ms");
-  Serial.print("[LOG] Length: ");
+  Serial.print("[LOG] Seq #");
+  Serial.print(seq);
+  Serial.print(" | Length: ");
   Serial.print(len);
   Serial.print(" bytes | CRC: 0x");
   Serial.println(crcRecv, HEX);
@@ -261,12 +270,12 @@ void loop() {
     receivePacket();
   }
 
-  // 2. Heartbeat every 2 seconds when idle
-  if (millis() - lastHeartbeat > 2000) {
+  // 2. Heartbeat every 5 seconds when idle
+  if (millis() - lastHeartbeat > 5000) {
     lastHeartbeat = millis();
     Serial.print("[IDLE] Waiting for LiFi... Current ADC: ");
     Serial.print(raw);
-    Serial.print(" | Peak (last 2s): ");
+    Serial.print(" | Peak (last 5s): ");
     Serial.print(peakADC);
     Serial.print(" | Threshold: ");
     Serial.println(lightThreshold);
