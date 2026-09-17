@@ -2,7 +2,7 @@
 // SemLiFi SENDER v4.0 — Dual-Mode Interactive & Autonomous
 // ============================================================
 // Protocol:
-//   [PREAMBLE: 8× 0xAA] [SYNC: 0x7E] [SEQ] [LEN] [DATA...] [CRC]
+//   [PREAMBLE: 16× 0xAA] [SYNC: 0x7E] [SEQ] [LEN] [DATA...] [CRC]
 // ============================================================
 
 #define LED_PIN        23     // GPIO pin driving 2N2222 base (or LED anode)
@@ -10,8 +10,8 @@
 #define BIT_PERIOD_US  1000   // 1000us per bit (1000 bps)
 #define PREAMBLE_BYTE  0xAA   // Alternating 10101010 clock signal
 #define SYNC_BYTE      0x7E   // Frame sync mark
-#define PREAMBLE_LEN   8      // Number of preamble bytes
-#define MAX_MSG_LEN    100    // Max message length
+#define PREAMBLE_LEN   16     // 16 preamble bytes for rock-solid PLL clock lock
+#define MAX_MSG_LEN    250    // Max message length (expanded to 250 bytes)
 
 uint8_t seqNum = 0;           // Rolling sequence number (0–255)
 unsigned long txCount = 0;    // Total packets sent
@@ -80,7 +80,7 @@ void sendPacket(const char* msg, uint8_t msgLen) {
   // Flash onboard LED to show active transmission
   digitalWrite(STATUS_LED, HIGH);
 
-  // 1. PREAMBLE (8 bytes of 0xAA)
+  // 1. PREAMBLE (16 bytes of 0xAA)
   for (int i = 0; i < PREAMBLE_LEN; i++) {
     sendByte(PREAMBLE_BYTE);
   }
@@ -172,6 +172,7 @@ void ledSelfTest() {
 
 void setup() {
   Serial.begin(115200);
+  Serial.setTimeout(50); // Fast timeout: immediate capture of Serial Monitor input regardless of line ending
   pinMode(LED_PIN, OUTPUT);
   pinMode(STATUS_LED, OUTPUT);
   digitalWrite(LED_PIN, LOW);
@@ -189,12 +190,12 @@ void setup() {
   Serial.println("============================================\n");
 }
 
-bool autoTxEnabled = false; // Disabled by default to give test harness full deterministic control
+bool autoTxEnabled = false; // Disabled by default to give user/test full control
 
 void loop() {
   // 1. Check if user typed a custom message in Serial Monitor
   if (Serial.available() > 0) {
-    String manualMsg = Serial.readStringUntil('\n');
+    String manualMsg = Serial.readString();
     manualMsg.trim();
     if (manualMsg.length() > 0) {
       if (manualMsg == "AUTOTX 1") {

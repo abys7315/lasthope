@@ -2,19 +2,16 @@
 // SemLiFi RECEIVER v4.0 — High-Sensitivity Adaptive Optical Decoder
 // ============================================================
 // Protocol (matches Sender.ino):
-//   [PREAMBLE: 8× 0xAA] [SYNC: 0x7E] [SEQ] [LEN] [DATA...] [CRC]
+//   [PREAMBLE: 16× 0xAA] [SYNC: 0x7E] [SEQ] [LEN] [DATA...] [CRC]
 // ============================================================
 
 #define SENSOR_PIN     34     // GPIO pin connected to photodiode / op-amp
 #define BIT_PERIOD_US  1000   // 1000 us per bit (1000 bps)
 #define HALF_BIT_US    500    // Half-bit center (500us)
-#define PREAMBLE_BYTE  0xAA
-#define SYNC_BYTE      0x7E
-#define MAX_MSG_LEN    200
+#define PREAMBLE_BYTE  0xAA   // Clock synchronization byte
+#define SYNC_BYTE      0x7E   // Frame start delimiter
+#define MAX_MSG_LEN    250    // Maximum payload capacity (expanded to 250 bytes)
 
-// ============================================================
-// BALANCED HIGH-SPEED THRESHOLD (100 ADC counts)
-// ============================================================
 int lightThreshold = 100;
 int peakADC = 0;
 
@@ -41,6 +38,27 @@ uint8_t crc8(const uint8_t* data, uint16_t len) {
     }
   }
   return crc;
+}
+
+// ---- Wait for channel to be LOW continuously for at least minLowUs (inter-byte silence) ----
+bool waitForGap(unsigned long minLowUs, unsigned long timeoutMs) {
+  unsigned long startMs = millis();
+  unsigned long lowStart = 0;
+  bool countingLow = false;
+
+  while (millis() - startMs < timeoutMs) {
+    if (readSensor() == HIGH) {
+      countingLow = false;
+    } else {
+      if (!countingLow) {
+        countingLow = true;
+        lowStart = micros();
+      } else if (micros() - lowStart >= minLowUs) {
+        return true; // Confirmed inter-byte silence
+      }
+    }
+  }
+  return false;
 }
 
 // ---- Read a single byte with microsecond bit timing ----
@@ -89,31 +107,34 @@ int readByte(unsigned long timeoutMs) {
 void receivePacket() {
   unsigned long rxStart = millis();
 
-  // Step 1: Detect Preamble (look for 0xAA or 0x2A clock bytes)
+  // Step 0: Ensure byte alignment by waiting for inter-byte silence
+  waitForGap(1500, 150);
+
+  // Step 1: Detect Preamble (0xAA clock bytes)
   int aaCount = 0;
   unsigned long searchStart = millis();
   bool syncFound = false;
 
   while (aaCount < 2) {
-    int b = readByte(120);
-    if (b == PREAMBLE_BYTE || b == 0x2A) {
+    int b = readByte(100);
+    if (b == PREAMBLE_BYTE) {
       aaCount++;
-    } else if (b == SYNC_BYTE || b == 0x1F) {
+    } else if (b == SYNC_BYTE) {
       syncFound = true;
       break;
     } else if (b >= 0) {
       aaCount = 0;
     }
-    if (millis() - searchStart > 350) {
-      return; // Timeout
+    if (millis() - searchStart > 300) {
+      return; // Timeout waiting for preamble
     }
   }
 
-  // Step 2: Lock onto SYNC BYTE (0x7E or 0x1F)
+  // Step 2: Lock onto SYNC BYTE (0x7E)
   if (!syncFound) {
-    for (int attempt = 0; attempt < 12; attempt++) {
+    for (int attempt = 0; attempt < 16; attempt++) {
       int b = readByte(100);
-      if (b == SYNC_BYTE || b == 0x1F) {
+      if (b == SYNC_BYTE) {
         syncFound = true;
         break;
       }
@@ -149,7 +170,7 @@ void receivePacket() {
   unsigned long burstEnd = 0;
 
   for (int i = 0; i < len; i++) {
-    int b = readByte(60);
+    int b = readByte(50);
     if (b < 0) {
       if (firstCorrupt == -1) {
         firstCorrupt = i;
@@ -169,13 +190,12 @@ void receivePacket() {
 
   // Step 6: Read CRC Checksum
   int crcRecv = readByte(100);
-
   unsigned long rxEnd = millis();
 
   // If burst loss occurred during payload
   if (corruptCount > 0) {
     rxFailCount++;
-    unsigned long burstDur = (burstEnd > burstStart) ? (burstEnd - burstStart) : (corruptCount * 10);
+    unsigned long burstDur = (burstEnd > burstStart) ? (burstEnd - burstStart) : (corruptCount * 12);
     Serial.println("\n====================================");
     Serial.print("[BURST_EVENT] duration_ms=");
     Serial.print(burstDur);
@@ -206,6 +226,33 @@ void receivePacket() {
     return;
   }
 
+  // Step 7: Verify CRC over [SEQ][LEN][DATA...]
+  uint8_t checkFrame[MAX_MSG_LEN + 2];
+  checkFrame[0] = (uint8_t)seq;
+  checkFrame[1] = (uint8_t)len;
+  memcpy(&checkFrame[2], msg, len);
+  uint8_t calculatedCrc = crc8(checkFrame, len + 2);
+
+  if ((uint8_t)crcRecv != calculatedCrc) {
+    rxErrCount++;
+    Serial.println("\n====================================");
+    Serial.print("[LOG] CRC MISMATCH! Calculated: 0x");
+    Serial.print(calculatedCrc, HEX);
+    Serial.print(" | Received: 0x");
+    Serial.println(crcRecv, HEX);
+    Serial.print("[LOG] Message Received: \"");
+    Serial.print(msg);
+    Serial.println("\"");
+    Serial.print("[LOG] Totals -> Good: ");
+    Serial.print(rxGoodCount);
+    Serial.print(" | Failed: ");
+    Serial.print(rxFailCount);
+    Serial.print(" | Errors: ");
+    Serial.println(rxErrCount);
+    Serial.println("====================================");
+    return;
+  }
+
   rxGoodCount++;
 
   Serial.println("\n====================================");
@@ -219,7 +266,8 @@ void receivePacket() {
   Serial.print(" | Length: ");
   Serial.print(len);
   Serial.print(" bytes | CRC: 0x");
-  Serial.println(crcRecv, HEX);
+  Serial.print(crcRecv, HEX);
+  Serial.println(" (MATCH)");
   Serial.print("[LOG] Received Message: \"");
   Serial.print(msg);
   Serial.println("\"");
@@ -238,27 +286,34 @@ void setup() {
 
   delay(500);
 
+  // Measure ambient ADC baseline
+  int ambientADC = 0;
+  for (int i = 0; i < 10; i++) {
+    ambientADC += analogRead(SENSOR_PIN);
+    delay(10);
+  }
+  ambientADC /= 10;
+
+  // Set balanced threshold: ambient + 100, minimum 100
+  lightThreshold = (ambientADC < 50) ? 100 : (ambientADC + 100);
+
   Serial.println("\n============================================");
   Serial.println("  SemLiFi RECEIVER v4.0 — High-Sensitivity");
   Serial.println("============================================");
   Serial.print("  Sensor pin:       GPIO ");
   Serial.println(SENSOR_PIN);
-
-  int curADC = analogRead(SENSOR_PIN);
-  lightThreshold = 150;
-
-  Serial.print("  Baseline ADC:     ");
-  Serial.println(curADC);
+  Serial.print("  Ambient ADC:      ");
+  Serial.println(ambientADC);
   Serial.print("  Tuned Threshold:  ");
   Serial.println(lightThreshold);
   Serial.println("============================================");
 
-  if (curADC >= 50) {
-    Serial.println(" [WARN: Ambient light detected! Shield sensor]");
+  if (ambientADC >= 50) {
+    Serial.println("  [WARN: Ambient room light detected! Shield photodiode]");
   } else {
-    Serial.println(" [OK: High-sensitivity baseline calibrated]");
+    Serial.println("  [OK: Clean optical baseline calibrated]");
   }
-  Serial.println("Listening for LiFi optical packets...\n");
+  Serial.println("  Listening for LiFi optical packets...\n");
 }
 
 void loop() {
